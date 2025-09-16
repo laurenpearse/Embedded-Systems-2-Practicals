@@ -47,11 +47,18 @@
 /*
   start_time
   end_time
-  execution_time 
+  execution_time
   checksum: should be uint64_t
   initial width and height maybe or you might opt for an array??
 */
 
+uint32_t start_time = 0;
+uint32_t end_time = 0;
+uint32_t execution_time=0;
+uint64_t checksum=0;
+uint64_t width=256;
+uint64_t height=256;
+int64_t scale = 1000000;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -99,28 +106,32 @@ int main(void)
   MX_GPIO_Init();
   /* USER CODE BEGIN 2 */
   //TODO: Turn on LED 0 to signify the start of the operation
-  
+  GPIOB->ODR |= (1<<0);
 
   //TODO: Record the start time
-  
-  
-  //TODO: Call the Mandelbrot Function and store the output in the checksum variable defined initially
+  start_time = HAL_GetTick();
   
 
+  //TODO: Call the Mandelbrot Function and store the output in the checksum variable defined initially
+  checksum = calculate_mandelbrot_double(width, height, MAX_ITER);
+
   //TODO: Record the end time
-  
+  end_time = HAL_GetTick();
 
   //TODO: Calculate the execution time
   
+  execution_time= end_time-start_time;
 
   //TODO: Turn on LED 1 to signify the end of the operation
-  
+  GPIOB->ODR |= (1<<1);
 
   //TODO: Hold the LEDs on for a 1s delay
-  
+
+  HAL_Delay(1000);
 
   //TODO: Turn off the LEDs
-  
+
+  GPIOB-> ODR = 0x00;
 
   /* USER CODE END 2 */
 
@@ -201,21 +212,102 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 //TODO: Mandelbroat using variable type integers and fixed point arithmetic
+
 uint64_t calculate_mandelbrot_fixed_point_arithmetic(int width, int height, int max_iterations){
   uint64_t mandelbrot_sum = 0;
-    //TODO: Complete the function implementation
-    
-    return mandelbrot_sum;
 
-}
+
+    //TODO: Complete the function implementation
+
+     /*doing these operations out of the loop because really slow if it has to run through them every time*/
+
+      int32_t scale = 1 << 16;  // 65536 (power of 2 for fast shifts- faster operations)
+      int32_t threeFiveScaled = (int32_t)(3.5 * scale);  // 229376
+      int32_t twoScaled       = (int32_t)(2.0 * scale);  // 131072
+      int32_t twoFiveScaled   = (int32_t)(2.5 * scale);  // 163840
+      int32_t oneScaled       = (int32_t)(1.0 * scale);  // 65536
+      int64_t fourScaled      = (int64_t)4 * scale * scale; // 4.0 made it 64 bit cos when multiplied by two big nums could overflow
+
+
+      for (int y = 0; y < height; y++)
+      {
+          int32_t yO = (int32_t)(((int64_t)y * twoScaled) / height) - oneScaled;
+
+          for (int x = 0; x < width; x++)
+          {
+              int32_t xO = (int32_t)(((int64_t)x * threeFiveScaled) / width) - twoFiveScaled;
+
+              int32_t xi = 0;
+              int32_t yi = 0;
+
+              int i = 0;
+
+              int64_t xSquared = 0;
+              int64_t ySquared = 0;
+
+              while (i < max_iterations && (xSquared + ySquared) <= fourScaled)
+              {
+
+
+                  int32_t temp = (int32_t)((xSquared - ySquared) >> 16) + xO;
+
+                  yi = (int32_t)(((int64_t)2 * xi * yi) >> 16) + yO;
+
+                  xi = temp;
+
+                  i++;
+
+                  xSquared = (int64_t)xi * xi;
+                  ySquared = (int64_t)yi * yi;
+              }
+
+              mandelbrot_sum += i;
+          }
+      }
+
+      return mandelbrot_sum;
+  }
 
 //TODO: Mandelbroat using variable type double
 uint64_t calculate_mandelbrot_double(int width, int height, int max_iterations){
     uint64_t mandelbrot_sum = 0;
     //TODO: Complete the function implementation
-    
-    return mandelbrot_sum;
-}
+
+
+        double threeFiveDivWidth = 3.5 / (double)width;
+        double twoDivHeight      = 2.0 / (double)height;
+
+        for (int y = 0; y < height; y++) {
+            double yO = (double)y * twoDivHeight - 1.0;
+
+            for (int x = 0; x < width; x++) {
+                double xO = (double)x * threeFiveDivWidth - 2.5;
+
+                double xi = 0.0;
+                double yi = 0.0;
+                int i = 0;
+
+                double xSquared = 0.0;
+                double ySquared = 0.0;
+
+                while (i < max_iterations && (xSquared + ySquared) <= 4.0) {
+                    double temp = xSquared - ySquared + xO;
+                    yi = 2.0 * xi * yi + yO;
+                    xi = temp;
+
+                    i++;
+
+                    xSquared = xi * xi;
+                    ySquared = yi * yi;
+                }
+
+                mandelbrot_sum += i;
+            }
+        }
+
+        return mandelbrot_sum;
+    }
+
 
 /* USER CODE END 4 */
 
