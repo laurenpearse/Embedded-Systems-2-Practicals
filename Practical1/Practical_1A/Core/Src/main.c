@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdint.h>
+#include <stdlib.h>
 #include "stm32f0xx.h"
 /* USER CODE END Includes */
 
@@ -44,7 +45,57 @@
 TIM_HandleTypeDef htim16;
 
 /* USER CODE BEGIN PV */
+
 // TODO: Define input variables
+
+
+
+
+int currentMode = 0;  // 0 = nothing, 1 = mode1, 2 = mode2, 3 = mode3
+int delayLength = 0;  // 0 = 1s, 1 = 0.5s
+uint8_t sparkleval = 0;    // current sparkle
+uint8_t sparklestep = 0;    // tracks bit to turn off
+uint8_t sparkleHold = 0;
+
+
+uint8_t mode1[] = {
+    0b00000001,
+    0b00000010,
+    0b00000100,
+    0b00001000,
+    0b00010000,
+    0b00100000,
+    0b01000000,
+    0b10000000,
+    0b01000000,
+    0b00100000,
+	0b00010000,
+	0b00001000,
+	0b00000100,
+	0b00000010,
+	0b00000001,
+};
+
+uint8_t mode2[] = {
+    0b11111110,
+    0b11111101,
+    0b11111011,
+    0b11110111,
+    0b11101111,
+    0b11011111,
+    0b10111111,
+    0b01111111,
+    0b10111111,
+    0b11011111,
+	0b11101111,
+	0b11110111,
+	0b11111011,
+	0b11111101,
+	0b11111110,
+};
+
+
+
 
 
 /* USER CODE END PV */
@@ -93,7 +144,8 @@ int main(void)
 
   // TODO: Start timer TIM16
 
- 
+  HAL_TIM_Base_Start_IT(&htim16);
+
 
   /* USER CODE END 2 */
 
@@ -108,6 +160,30 @@ int main(void)
 
     // TODO: Check pushbuttons to change timer delay
 
+	  // pin0 indicates it's pushed when = GPIO_PIN_RESET (i.e when to GND), it uses pull-up resistors
+
+	  if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET) {
+
+		  // Switch to other delay (0 or 1)
+	      delayLength = !delayLength;
+
+	      // Adjust the timer period (ARR) basically how long timer waits before triggering again
+	      // delayLength = 0 is 1s mode
+	      if (delayLength == 0) {
+	          __HAL_TIM_SET_AUTORELOAD(&htim16, 1000 - 1);  // sets timers ARR to 999, timer runs at 1000 ticks per sec
+	          //the 1000 ticks per sec is cos: LL_SetSystemCoreClock(8000000) - meaning system clock freq is 8MHz
+	          // and the timer is set by this:   htim16.Init.Prescaler = 8000-1;
+	          //which means divide 8MHz by 8000, which means the timer is running at 1000 Hz i.e 1 tick per millisecond
+	      } else {
+	          __HAL_TIM_SET_AUTORELOAD(&htim16, 500 - 1);   // 0.5s same logic as above.. it's just half the time delay
+	      }
+
+	      // Resets the counter to apply delay change, don't want it to start counting additionally on a delay (will have issues)
+	      __HAL_TIM_SET_COUNTER(&htim16, 0);
+
+	      // Debounce delay
+	      HAL_Delay(200);
+	  }
 
     
 
@@ -318,17 +394,128 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void TIM16_IRQHandler(void)
 {
-	// Acknowledge interrupt
-	HAL_TIM_IRQHandler(&htim16);
 
 	// TODO: Change LED pattern
 
+	// Acknowledge interrupt
+	HAL_TIM_IRQHandler(&htim16);
+
+	    // Check for mode
+	    if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == GPIO_PIN_RESET) {
+	        currentMode = 1;
+	    } else if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == GPIO_PIN_RESET) {
+	        currentMode = 2;
+	    } else if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == GPIO_PIN_RESET) {
+	        currentMode = 3;
+	    }
 
 
-}
+
+	    // Static indexes to remember where we are in each mode pattern
+	    // keep their values between interrupts
+	    static int mode1_index = 0;
+	    static int mode2_index = 0;
+	    static uint8_t sparklePhase = 0;
+	    static uint8_t sparkleOffDelay = 1;
+
+
+	    // mode 1
+
+	    if (currentMode == 1) {
+	        // Output the current pattern step to the LEDs
+	        GPIOB->ODR = mode1[mode1_index];
+
+	        // Move to next step
+	        mode1_index++;
+
+	        // Wrap around if reach the end of the array
+	        if (mode1_index >= sizeof(mode1)) {
+	            mode1_index = 0;
+	        }
+	    }
+
+	    // mode 2
+
+	    else if (currentMode == 2) {
+	        // Output the current pattern step
+	        GPIOB->ODR = mode2[mode2_index];
+
+	        // Move to next step
+	        mode2_index++;
+
+	        // Wrap around
+	        if (mode2_index >= sizeof(mode2)) {
+	            mode2_index = 0;
+	        }
+	    }
+
+
+
+	    // Mode 3 Sparkle mode
+	    else if (currentMode == 3) {
+
+	        // Step 1: Generate and display a random pattern (new sparkle)
+	        if (sparklePhase == 0) {
+	            if (sparkleHold == 0) {
+	                // random 8-bit value between 0 and 255
+	                sparkleval = rand() % 256;
+
+	                // Show it on the LEDs
+	                GPIOB->ODR = sparkleval;
+
+	                // Set a new random delay between 100–1500 ms
+	                // You divide by tick duration to get # of interrupts to wait
+	                sparkleHold = (rand() % 1400 + 100) / (delayLength ? 500 : 1000);
+	                if (sparkleHold == 0) sparkleHold = 1; // avoid zero wait
+
+	                sparklestep = 1; // start from LED 0 next
+	                sparklePhase = 1; // move to turn-off phase
+
+	                // Set fixed delay (how many interrupt cycles) for turning off LEDs
+	                sparkleOffDelay = (rand() % 1400 + 100) / (delayLength ? 500 : 1000);
+	                if (sparkleOffDelay == 0) sparkleOffDelay = 1; //makes sure no delay of zero
+	            } else {
+	                sparkleHold--;  // still holding the pattern
+	            }
+	        }
+
+	        // Step 2: Turn off one LED at a time
+	        else {
+	            if (sparkleHold == 0) {
+	                // Pick a random bit to clear (between 0 and 7)
+	                uint8_t bitToClear = 0;
+	                do {
+	                    bitToClear = rand() % 8;  // Try a random bit between 0 and 7
+	                } while (!(sparkleval & (1 << bitToClear)));  // Keep trying until you find one that’s ON
+
+	                // Turn off that bit
+	                sparkleval &= ~(1 << bitToClear);
+	                GPIOB->ODR = sparkleval;
+
+	                sparklestep++;  // Count how many we've cleared
+
+	                //  Use same fixed delay for each bit-off step
+	                sparkleHold = sparkleOffDelay;
+	            } else {
+	                sparkleHold--;  // hold before clearing next LED
+	            }
+
+	            // After all LEDs are off, restart sparkle cycle
+	            if (sparklestep > 8 || sparkleval == 0) {
+	                sparklePhase = 0;
+	                sparkleHold = 0;
+	                sparklestep = 0;
+	            }
+	        }
+	    }
+	}
+
+
+
 
 
 /* USER CODE END 4 */
+
 
 /**
   * @brief  This function is executed in case of error occurrence.
@@ -337,7 +524,7 @@ void TIM16_IRQHandler(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
+  /* User can add his own implementation Sto report the HAL error return state */
   __disable_irq();
   while (1)
   {
