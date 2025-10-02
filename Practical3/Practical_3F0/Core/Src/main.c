@@ -54,8 +54,8 @@
 
 uint32_t start_time = 0;
 uint32_t end_time = 0;
-uint32_t execution_time=0;
-uint64_t checksum=0;
+uint32_t execution_timeFO=0;
+uint64_t checksumFO=0;
 uint64_t width=256;
 uint64_t height=256;
 int64_t scale = 1000000;
@@ -113,14 +113,14 @@ int main(void)
 
 
   //TODO: Call the Mandelbrot Function and store the output in the checksum variable defined initially
-  checksum = calculate_mandelbrot_double(width, height, MAX_ITER);
+  checksumFO = calculate_mandelbrot_fixed_point_arithmetic(width, height, MAX_ITER);
 
   //TODO: Record the end time
   end_time = HAL_GetTick();
 
   //TODO: Calculate the execution time
 
-  execution_time= end_time-start_time;
+  execution_timeFO= end_time-start_time;
 
   //TODO: Turn on LED 1 to signify the end of the operation
   GPIOB->ODR |= (1<<1);
@@ -221,7 +221,7 @@ uint64_t calculate_mandelbrot_fixed_point_arithmetic(int width, int height, int 
 
      /*doing these operations out of the loop because really slow if it has to run through them every time*/
 
-      int32_t scale = 1 << 16;  // 65536 (power of 2 for fast shifts- faster operations)
+      int32_t scale = 1000000;  // 65536 (power of 2 for fast shifts- faster operations) (1 << 16)
       int32_t threeFiveScaled = (int32_t)(3.5 * scale);  // 229376
       int32_t twoScaled       = (int32_t)(2.0 * scale);  // 131072
       int32_t twoFiveScaled   = (int32_t)(2.5 * scale);  // 163840
@@ -249,9 +249,9 @@ uint64_t calculate_mandelbrot_fixed_point_arithmetic(int width, int height, int 
               {
 
 
-                  int32_t temp = (int32_t)((xSquared - ySquared) >> 16) + xO;
+                  int32_t temp = (int32_t)((xSquared - ySquared) / scale) + xO;
 
-                  yi = (int32_t)(((int64_t)2 * xi * yi) >> 16) + yO;
+                  yi = (int32_t)(((int64_t)2 * xi * yi) / scale) + yO;
 
                   xi = temp;
 
