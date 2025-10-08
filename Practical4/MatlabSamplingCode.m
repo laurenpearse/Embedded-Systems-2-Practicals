@@ -1,8 +1,8 @@
 % -------- Settings --------
 files = {'piano.wav','guitar.wav','drum.wav'};
 names = {'Piano','Guitar','Drum'};
-N = 8000;    % target LUT length
-NS=8000;
+N = 10000;    % target LUT length
+NS=10000;
 for k = 1:numel(files)
     [y, Fs] = audioread(files{k});
     if size(y,2) == 2
